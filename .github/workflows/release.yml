@@ -1,46 +1,74 @@
-name: Release
+name: Build Gemini Desktop (Linux)
 
 on:
   push:
-    tags:
-      - 'v*' # Trigger on version tags, e.g., v1.0.0
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 'lts/*'
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+    - name: Install Rust stable
+      uses: dtolnay/rust-toolchain@stable
 
-      - name: Install frontend dependencies
-        run: npm install
+    - name: Install Frontend Dependencies
+      run: npm install
 
-      - name: Build and release Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Workaround for linuxdeploy AppImage creation
-          APPIMAGE_EXTRACT_AND_RUN: 1
-          NO_STRIP: true
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Gemini Desktop Linux ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false
+    - name: Extract Version
+      id: version
+      run: |
+        VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+    - name: Build Application
+      env:
+        APPIMAGE_EXTRACT_AND_RUN: 1
+        NO_STRIP: true
+      run: npm run tauri build
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: GeminiDesktop-Linux-Bundles
+        path: |
+          src-tauri/target/release/bundle/deb/*.deb
+          src-tauri/target/release/bundle/rpm/*.rpm
+          src-tauri/target/release/bundle/appimage/*.AppImage
+
+    - name: Create Release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
+        name: Release v${{ steps.version.outputs.version }} (Build ${{ github.run_number }})
+        files: |
+          src-tauri/target/release/bundle/deb/*.deb
+          src-tauri/target/release/bundle/rpm/*.rpm
+          src-tauri/target/release/bundle/appimage/*.AppImage
+        body: |
+          ### Gemini Desktop for Linux (Unofficial)
+          
+          New release for build ${{ github.run_number }}.
+          
+          Version: ${{ steps.version.outputs.version }}
+          
+          **Downloads:**
+          - [AppImage](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}-${{ github.run_number }}/gemini-desktop-linux_${{ steps.version.outputs.version }}_amd64.AppImage)
+          - [DEB](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}-${{ github.run_number }}/gemini-desktop-linux_${{ steps.version.outputs.version }}_amd64.deb)
+          - [RPM](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}-${{ github.run_number }}/gemini-desktop-linux-${{ steps.version.outputs.version }}-1.x86_64.rpm)
