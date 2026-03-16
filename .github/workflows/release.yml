@@ -30,11 +30,31 @@ jobs:
     - name: Install Frontend Dependencies
       run: npm install
 
-    - name: Extract Version
+    - name: Calculate Dynamic Version
       id: version
       run: |
-        VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+        RUN_NUM=${{ github.run_number }}
+        
+        # Calculate patch, minor, major based on run_number rolling over at 10
+        PATCH=$(( RUN_NUM % 10 ))
+        MINOR=$(( (RUN_NUM / 10) % 10 ))
+        MAJOR=$(( RUN_NUM / 100 ))
+        
+        VERSION="${MAJOR}.${MINOR}.${PATCH}"
+        echo "Calculated Version: ${VERSION}"
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        
+        # Update tauri.conf.json to match the calculated version
+        # Create a temporary file and overwrite to avoid inline replacement issues across platforms
+        jq ".version = \"${VERSION}\"" src-tauri/tauri.conf.json > src-tauri/tauri.conf.tmp.json
+        mv src-tauri/tauri.conf.tmp.json src-tauri/tauri.conf.json
+        
+        # Also update package.json just in case
+        jq ".version = \"${VERSION}\"" package.json > package.tmp.json
+        mv package.tmp.json package.json
+        
+        # And Cargo.toml
+        sed -i "s/^version = .*/version = \"${VERSION}\"/" src-tauri/Cargo.toml
 
     - name: Build Application
       env:
@@ -55,20 +75,19 @@ jobs:
       if: github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
-        name: Release v${{ steps.version.outputs.version }} (Build ${{ github.run_number }})
+        tag_name: v${{ steps.version.outputs.version }}
+        name: Gemini Desktop for Linux ${{ steps.version.outputs.version }}
+        generate_release_notes: true
         files: |
           src-tauri/target/release/bundle/deb/*.deb
           src-tauri/target/release/bundle/rpm/*.rpm
           src-tauri/target/release/bundle/appimage/*.AppImage
         body: |
-          ### Gemini Desktop for Linux (Unofficial)
+          ### Installation
           
-          New release for build ${{ github.run_number }}.
-          
-          Version: ${{ steps.version.outputs.version }}
+          New release generated from build ${{ github.run_number }}.
           
           **Downloads:**
-          - [AppImage](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}-${{ github.run_number }}/gemini-desktop-linux_${{ steps.version.outputs.version }}_amd64.AppImage)
-          - [DEB](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}-${{ github.run_number }}/gemini-desktop-linux_${{ steps.version.outputs.version }}_amd64.deb)
-          - [RPM](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}-${{ github.run_number }}/gemini-desktop-linux-${{ steps.version.outputs.version }}-1.x86_64.rpm)
+          - [AppImage](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/gemini-desktop-linux_${{ steps.version.outputs.version }}_amd64.AppImage)
+          - [DEB](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/gemini-desktop-linux_${{ steps.version.outputs.version }}_amd64.deb)
+          - [RPM](https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/gemini-desktop-linux-${{ steps.version.outputs.version }}-1.x86_64.rpm)
