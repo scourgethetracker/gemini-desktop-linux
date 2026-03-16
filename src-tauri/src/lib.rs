@@ -27,13 +27,19 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     if event.state == ShortcutState::Pressed {
                         if shortcut.matches(Modifiers::CONTROL, Code::Space) {
-                            if let Some(window) = app.get_webview_window("chatbar") {
-                                let is_visible = window.is_visible().unwrap_or(false);
-                                if is_visible {
-                                    let _ = window.hide();
+                            let chatbar = app.get_webview_window("chatbar");
+                            let main = app.get_webview_window("main");
+
+                            if let (Some(chatbar_window), Some(main_window)) = (chatbar, main) {
+                                let is_chatbar_visible = chatbar_window.is_visible().unwrap_or(false);
+                                if is_chatbar_visible {
+                                    let _ = chatbar_window.hide();
+                                    let _ = main_window.show();
+                                    let _ = main_window.set_focus();
                                 } else {
-                                    let _ = window.show();
-                                    let _ = window.set_focus();
+                                    let _ = main_window.hide();
+                                    let _ = chatbar_window.show();
+                                    let _ = chatbar_window.set_focus();
                                 }
                             }
                         }
